@@ -25,62 +25,57 @@
     const filenameDisplay = document.getElementById('filename');
     const status = document.getElementById('saveStatus');
     
-    // 1. Получаем и нормализуем ссылку
+    // Включаем CORS для плеера
+    player.crossOrigin = "anonymous";
+
     const urlParams = new URLSearchParams(window.location.search);
     let publicUrl = urlParams.get('file');
 
     if (publicUrl) {
-        // На всякий случай меняем disk.360 на обычный disk.yandex
         publicUrl = publicUrl.replace('disk.360.yandex.ru', 'disk.yandex.ru');
-
-        filenameDisplay.innerText = "Связываюсь с Яндексом...";
+        filenameDisplay.innerText = "Получаю доступ к файлу...";
 
         fetch(`https://cloud-api.yandex.net/v1/disk/public/resources/download?public_key=${encodeURIComponent(publicUrl)}`)
-            .then(res => {
-                if (!res.ok) throw new Error('Яндекс не отдал файл. Проверьте, что ссылка публичная.');
-                return res.json();
-            })
+            .then(res => res.json())
             .then(data => {
-                filenameDisplay.innerText = "Файл найден, загружаю в плеер...";
+                if (!data.href) throw new Error('Яндекс не дал прямую ссылку');
                 
-                // Устанавливаем источник
-                player.src = data.href;
-                player.load(); // Принудительная подгрузка
+                // Чтобы обойти кэширование и CORS, иногда помогает добавка случайного параметра
+                const finalLink = data.href;
+                
+                player.src = finalLink;
+                filenameDisplay.innerText = "Файл загружен. Нажмите Play.";
 
-                // 2. Восстанавливаем время
                 player.onloadedmetadata = () => {
                     const savedTime = localStorage.getItem(publicUrl);
                     if (savedTime) {
                         player.currentTime = parseFloat(savedTime);
                     }
-                    filenameDisplay.innerText = "Готов к прослушиванию";
                 };
             })
             .catch(err => {
-                filenameDisplay.innerText = "Ошибка: " + err.message;
-                console.error(err);
+                filenameDisplay.innerText = "Ошибка доступа: " + err.message;
             });
-    } else {
-        filenameDisplay.innerText = "Ссылку не нашли. Добавьте ?file=... в адресную строку";
     }
 
-    // Обработка ошибок самого плеера
-    player.onerror = () => {
-        filenameDisplay.innerText = "Ошибка плеера: Браузер не может проиграть этот файл.";
-    };
-
-    // 3. Сохраняем прогресс
     const saveProgress = () => {
         if (publicUrl && player.currentTime > 0) {
             localStorage.setItem(publicUrl, player.currentTime);
-            status.innerText = "Время " + Math.floor(player.currentTime) + " сек. сохранено";
+            status.innerText = "Сохранено: " + Math.floor(player.currentTime) + " сек.";
         }
     };
 
     player.onpause = saveProgress;
-    setInterval(saveProgress, 5000); // Автосохранение каждые 5 сек
+    setInterval(saveProgress, 5000);
+
+    // Дополнительная проверка на ошибку
+    player.onerror = (e) => {
+        console.error("Audio error details:", player.error);
+        filenameDisplay.innerText = "Ошибка: Яндекс блокирует прямой доступ (CORS).";
+    };
 </script>
 
 </body>
 
 </html>
+

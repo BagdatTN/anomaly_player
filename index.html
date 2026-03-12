@@ -22,46 +22,65 @@
 
 <script>
     const player = document.getElementById('audioPlayer');
+    const filenameDisplay = document.getElementById('filename');
     const status = document.getElementById('saveStatus');
     
-    // 1. Получаем ссылку из URL (параметр ?file=...)
+    // 1. Получаем и нормализуем ссылку
     const urlParams = new URLSearchParams(window.location.search);
-    const publicUrl = urlParams.get('file');
+    let publicUrl = urlParams.get('file');
 
     if (publicUrl) {
+        // На всякий случай меняем disk.360 на обычный disk.yandex
+        publicUrl = publicUrl.replace('disk.360.yandex.ru', 'disk.yandex.ru');
+
+        filenameDisplay.innerText = "Связываюсь с Яндексом...";
+
         fetch(`https://cloud-api.yandex.net/v1/disk/public/resources/download?public_key=${encodeURIComponent(publicUrl)}`)
-            .then(res => res.json())
-            .then(data => {
-                player.src = data.href; // Прямая ссылка на .m4a
-                document.getElementById('filename').innerText = "Файл готов к прослушиванию";
-                
-                // 2. Восстанавливаем время
-                const savedTime = localStorage.getItem(publicUrl);
-                if (savedTime) {
-                    player.currentTime = parseFloat(savedTime);
-                }
+            .then(res => {
+                if (!res.ok) throw new Error('Яндекс не отдал файл. Проверьте, что ссылка публичная.');
+                return res.json();
             })
-            .catch(() => {
-                document.getElementById('filename').innerText = "Ошибка загрузки ссылки";
+            .then(data => {
+                filenameDisplay.innerText = "Файл найден, загружаю в плеер...";
+                
+                // Устанавливаем источник
+                player.src = data.href;
+                player.load(); // Принудительная подгрузка
+
+                // 2. Восстанавливаем время
+                player.onloadedmetadata = () => {
+                    const savedTime = localStorage.getItem(publicUrl);
+                    if (savedTime) {
+                        player.currentTime = parseFloat(savedTime);
+                    }
+                    filenameDisplay.innerText = "Готов к прослушиванию";
+                };
+            })
+            .catch(err => {
+                filenameDisplay.innerText = "Ошибка: " + err.message;
+                console.error(err);
             });
     } else {
-        document.getElementById('filename').innerText = "Добавьте ссылку на Яндекс.Диск в URL";
+        filenameDisplay.innerText = "Ссылку не нашли. Добавьте ?file=... в адресную строку";
     }
 
-    // 3. Сохраняем время при паузе или закрытии
+    // Обработка ошибок самого плеера
+    player.onerror = () => {
+        filenameDisplay.innerText = "Ошибка плеера: Браузер не может проиграть этот файл.";
+    };
+
+    // 3. Сохраняем прогресс
     const saveProgress = () => {
         if (publicUrl && player.currentTime > 0) {
             localStorage.setItem(publicUrl, player.currentTime);
-            status.innerText = "Прогресс сохранен";
+            status.innerText = "Время " + Math.floor(player.currentTime) + " сек. сохранено";
         }
     };
 
     player.onpause = saveProgress;
-    window.onunload = saveProgress;
-    
-    // Автосохранение каждые 10 секунд
-    setInterval(saveProgress, 10000);
+    setInterval(saveProgress, 5000); // Автосохранение каждые 5 сек
 </script>
 
 </body>
+
 </html>

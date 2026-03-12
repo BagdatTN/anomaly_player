@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Player for Yandex.Disk</title>
+    <style>
+        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f0f2f5; margin: 0; }
+        .player-card { background: white; padding: 2rem; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center; width: 90%; max-width: 400px; }
+        audio { width: 100%; margin-top: 20px; }
+        .status { font-size: 0.9rem; color: #666; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="player-card">
+    <h3>Мой Аудио Плеер</h3>
+    <div id="filename" class="status">Загрузка файла...</div>
+    <audio id="audioPlayer" controls playsinline></audio>
+    <div id="saveStatus" class="status"></div>
+</div>
+
+<script>
+    const player = document.getElementById('audioPlayer');
+    const status = document.getElementById('saveStatus');
+    
+    // 1. Получаем ссылку из URL (параметр ?file=...)
+    const urlParams = new URLSearchParams(window.location.search);
+    const publicUrl = urlParams.get('file');
+
+    if (publicUrl) {
+        fetch(`https://cloud-api.yandex.net/v1/disk/public/resources/download?public_key=${encodeURIComponent(publicUrl)}`)
+            .then(res => res.json())
+            .then(data => {
+                player.src = data.href; // Прямая ссылка на .m4a
+                document.getElementById('filename').innerText = "Файл готов к прослушиванию";
+                
+                // 2. Восстанавливаем время
+                const savedTime = localStorage.getItem(publicUrl);
+                if (savedTime) {
+                    player.currentTime = parseFloat(savedTime);
+                }
+            })
+            .catch(() => {
+                document.getElementById('filename').innerText = "Ошибка загрузки ссылки";
+            });
+    } else {
+        document.getElementById('filename').innerText = "Добавьте ссылку на Яндекс.Диск в URL";
+    }
+
+    // 3. Сохраняем время при паузе или закрытии
+    const saveProgress = () => {
+        if (publicUrl && player.currentTime > 0) {
+            localStorage.setItem(publicUrl, player.currentTime);
+            status.innerText = "Прогресс сохранен";
+        }
+    };
+
+    player.onpause = saveProgress;
+    window.onunload = saveProgress;
+    
+    // Автосохранение каждые 10 секунд
+    setInterval(saveProgress, 10000);
+</script>
+
+</body>
+</html>
